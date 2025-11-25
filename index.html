@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel Valley Farm | Admin</title>
     
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -20,7 +19,6 @@
         }
     </script>
     
-    <!-- React & Firebase -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -34,10 +32,13 @@
         .glass-header { background: rgba(15, 15, 16, 0.9); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(236, 72, 153, 0.15); }
         .bot-toggle { transition: all 0.3s ease; }
         .bot-active { background-color: #5865F2; color: white; box-shadow: 0 0 15px rgba(88, 101, 242, 0.4); }
+        /* Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #09090b; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #ec4899; }
+        /* Modal Overlay */
+        .modal-overlay { background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); }
     </style>
 </head>
 <body>
@@ -47,26 +48,19 @@
         const { useState, useEffect, useMemo } = React;
 
         // =================================================================================
-        // ⚙️ CONFIGURAÇÃO OBRIGATÓRIA
+        // ⚙️ CONFIGURAÇÃO
         // =================================================================================
         
         const CONFIG = {
-            // 1. SUAS CHAVES DO FIREBASE
             firebase: {
                 apiKey: "AIzaSyAqYDbEuyycnx-wIb0SnRnF_oFIT8ebBd0",
                 authDomain: "dados-do-farm.firebaseapp.com",
                 projectId: "dados-do-farm",
                 appId: "1:562865269160:web:5398b6d0da1bfb0151159d"
             },
-
-            // 2. SENHA DO ADMIN
             senhaAdmin: "valley123", 
-
-            // 3. LINK DO WEBHOOK DO DISCORD
             webhookUrl: "https://discord.com/api/webhooks/1442736005110038608/SI9XTxc6nL-Z7Yj177QGvWw8Q80xsptxoq70HhdPhTFEZJjJGcvzOcTXzCH41RixLAYd" 
         };
-
-        // =================================================================================
 
         const Icons = {
             Lock: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>,
@@ -77,6 +71,7 @@
             Trash: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
             Upload: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>,
             Search: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
+            Edit: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
             Discord: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037 14.168 14.168 0 0 0-.64 1.307 18.277 18.277 0 0 0-5.428 0 14.28 14.28 0 0 0-.644-1.309.071.071 0 0 0-.077-.036 19.736 19.736 0 0 0-4.89 1.515.06.06 0 0 0-.027.027C1.487 9.525.79 14.544 1.706 19.508a.077.077 0 0 0 .03.057 19.9 19.9 0 0 0 6.014 3.018.076.076 0 0 0 .083-.026 14.17 14.17 0 0 0 1.258-2.036.077.077 0 0 0-.041-.107 13.048 13.048 0 0 1-1.898-.905.078.078 0 0 1-.005-.129c.126-.094.25-.192.37-.294a.075.075 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.067 0a.074.074 0 0 1 .08.01c.118.1.242.198.368.293a.077.077 0 0 1-.005.13 12.592 12.592 0 0 1-1.898.904.076.076 0 0 0-.04.107 14.284 14.284 0 0 0 1.256 2.035.076.076 0 0 0 .084.027 19.866 19.866 0 0 0 6.02-3.02.077.077 0 0 0 .03-.056c.806-4.38.16-9.224-1.95-14.293a.06.06 0 0 0-.028-.027zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.418 2.157-2.418 1.21 0 2.176 1.095 2.157 2.418 0 1.334-.956 2.42-2.157 2.42zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.095 2.157 2.418 0 1.334-.946 2.42-2.157 2.42z"/></svg>
         };
 
@@ -93,21 +88,20 @@
             const [searchTerm, setSearchTerm] = useState("");
             const [activeTab, setActiveTab] = useState('ranking');
             const [autoDiscord, setAutoDiscord] = useState(true);
+            
+            // Estado para Edição Manual
+            const [editingMember, setEditingMember] = useState(null); // Objeto do membro sendo editado
 
             // Inicialização
             useEffect(() => {
                 const init = async () => {
                     let firebaseConfig = CONFIG.firebase;
-                    if (!firebaseConfig.apiKey) {
-                        const saved = localStorage.getItem('valley_farm_config');
-                        if (saved) firebaseConfig = JSON.parse(saved);
-                        else return setStatus('SEM CONFIG');
-                    }
                     try {
                         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
                         const db = firebase.firestore();
                         const auth = firebase.auth();
                         await auth.signInAnonymously();
+                        
                         setFb({ db, auth, batch: () => db.batch(), increment: (n) => firebase.firestore.FieldValue.increment(n), serverTimestamp: () => firebase.firestore.FieldValue.serverTimestamp() });
                         
                         db.collection('valley_members').onSnapshot(snap => {
@@ -132,7 +126,7 @@
             };
 
             const testWebhook = async () => {
-                if (!CONFIG.webhookUrl) return alert("ERRO: O link do Webhook não está no código HTML!");
+                if (!CONFIG.webhookUrl) return alert("ERRO: Link do Webhook inválido!");
                 try {
                     await fetch(CONFIG.webhookUrl, {
                         method: "POST",
@@ -143,21 +137,13 @@
                 } catch (e) { alert("Erro ao enviar."); }
             };
 
-            // --- LÓGICA DE ENVIO INTELIGENTE (EDITAR MENSAGEM) ---
+            // Lógica de envio inteligente para o Discord
             const sendWebhook = async (updatesCount) => {
                 if (!CONFIG.webhookUrl || !autoDiscord) return;
-
-                // 1. Calcula o Ranking ATUAL (Incluindo os novos dados processados localmente se possível, ou espera atualização)
-                // Obs: Aqui usamos o 'members' atual do state. Como o Firestore é rápido, pode ter um delay de milisegundos,
-                // mas para garantir, vamos pegar os membros e somar o que acabamos de processar na memória se fosse complexo.
-                // Mas vamos simplificar: o bot vai mandar o ranking base que está na tela + aviso de atualização.
-                
-                // Ordena TOP 5
-                const topMembers = [...members].sort((a,b) => (b.amount||0) - (a.amount||0)).slice(0, 10); // Top 10
+                const topMembers = [...members].sort((a,b) => (b.amount||0) - (a.amount||0)).slice(0, 10);
                 const totalFarm = members.reduce((a,c) => a + (c.amount||0), 0);
                 const date = new Date().toLocaleTimeString('pt-BR');
 
-                // Monta a String do Ranking Bonitinho
                 let rankingString = "";
                 if (topMembers.length > 0) {
                     rankingString = topMembers.map((m, i) => {
@@ -168,14 +154,13 @@
                     rankingString = "*Nenhum dado ainda...*";
                 }
 
-                // Monta o Embed
                 const embed = {
                     username: "Valley Bot",
                     avatar_url: "https://i.imgur.com/4M34hi2.png",
                     embeds: [{
                         title: "📦 Ranking de Farm - Atualizado",
-                        description: `O painel foi atualizado com **+${updatesCount} novos itens**!\nConfira o Top 10 atual da facção:`,
-                        color: 15489113, // Rosa
+                        description: `Painel atualizado (Manual ou Log)!\nConfira o Top 10 atual da facção:`,
+                        color: 15489113, 
                         fields: [
                             { name: "🏆 Top Farmadores", value: rankingString, inline: false },
                             { name: "📊 Estatísticas", value: `Total Farmado: **${formatNumber(totalFarm)}**\nMembros: **${members.length}**`, inline: false }
@@ -184,44 +169,29 @@
                     }]
                 };
 
-                // Lógica de "Editar Mensagem Anterior"
+                // Mesma lógica de PATCH para editar a msg anterior
                 const lastMsgId = localStorage.getItem('valley_last_msg_id');
-                let url = CONFIG.webhookUrl + "?wait=true"; // wait=true faz o Discord devolver o ID da mensagem
+                let url = CONFIG.webhookUrl + "?wait=true";
                 let method = "POST";
-
-                // Se já temos um ID salvo, tentamos editar (PATCH)
                 if (lastMsgId) {
                     url = `${CONFIG.webhookUrl}/messages/${lastMsgId}?wait=true`;
                     method = "PATCH";
                 }
-
                 try {
-                    const res = await fetch(url, {
-                        method: method,
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(embed)
-                    });
-
-                    // Se der erro no PATCH (ex: mensagem apagada), tenta POST de novo
+                    const res = await fetch(url, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(embed) });
                     if (!res.ok && method === "PATCH") {
-                        console.log("Mensagem antiga não encontrada, criando nova...");
-                        const retryRes = await fetch(CONFIG.webhookUrl + "?wait=true", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(embed)
-                        });
+                        // Se falhar a edição, cria nova
+                        const retryRes = await fetch(CONFIG.webhookUrl + "?wait=true", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(embed) });
                         const data = await retryRes.json();
                         if (data.id) localStorage.setItem('valley_last_msg_id', data.id);
                     } else if (res.ok) {
                         const data = await res.json();
                         if (data.id) localStorage.setItem('valley_last_msg_id', data.id);
-                        console.log("Mensagem enviada/atualizada no Discord!");
                     }
-                } catch (e) {
-                    console.error("Erro no Webhook", e);
-                }
+                } catch (e) { console.error("Erro Webhook", e); }
             };
 
+            // Processamento de Logs
             const processLogs = async () => {
                 if (!fb || !rawLog.trim()) { alert("A caixa está vazia!"); return; }
                 setLoading(true);
@@ -236,6 +206,7 @@
                         const clean = line.trim();
                         const idMatch = clean.match(/\[ID\]:\s*(\d+)/i);
                         const nameMatch = clean.match(/\[NOME\]:\s*([^(\n|P|G)]+)/i);
+                        
                         if (nameMatch) currentName = nameMatch[1].trim();
                         if (idMatch) currentId = idMatch[1].trim();
                         
@@ -262,17 +233,57 @@
                     });
 
                     await batch.commit();
-                    if (autoDiscord) {
-                        // Pequeno delay para garantir que o 'members' local (listener) atualize antes de enviar pro Discord
-                        // Ou enviamos os dados atuais + novos
-                        setTimeout(() => sendWebhook(count), 1000); 
-                    }
-                    setRawLog(""); 
+                    if (autoDiscord) setTimeout(() => sendWebhook(count), 1000); 
+                    setRawLog("");
                     alert(`${count} itens salvos! Discord atualizado.`);
                     setActiveTab('ranking');
                 } catch (e) {
                     console.error(e);
                     alert("Erro ao salvar.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // --- AÇÕES DO ADMIN (MANUAL) ---
+
+            // Função para Remover Membro
+            const handleDeleteMember = async (id, name) => {
+                if (!isAdmin) return;
+                if (!confirm(`TEM CERTEZA?\n\nVocê vai remover "${name}" do ranking permanentemente.`)) return;
+                
+                try {
+                    await fb.db.collection('valley_members').doc(id).delete();
+                    alert("Membro removido com sucesso!");
+                } catch (e) {
+                    alert("Erro ao remover: " + e.message);
+                }
+            };
+
+            // Abrir Modal de Edição
+            const openEditModal = (member) => {
+                setEditingMember({ ...member }); // Clona para editar sem afetar a lista na hora
+            };
+
+            // Salvar Edição Manual
+            const saveManualEdit = async (e) => {
+                e.preventDefault();
+                if (!editingMember) return;
+                
+                setLoading(true);
+                try {
+                    await fb.db.collection('valley_members').doc(editingMember.id).update({
+                        name: editingMember.name,
+                        id_game: editingMember.id_game,
+                        amount: parseInt(editingMember.amount) // Garante que é numero
+                    });
+                    
+                    if (autoDiscord) setTimeout(() => sendWebhook(0), 1000); // Atualiza bot
+                    
+                    setEditingMember(null); // Fecha modal
+                    alert("Dados atualizados!");
+                } catch (err) {
+                    alert("Erro ao atualizar: " + err.message);
                 } finally {
                     setLoading(false);
                 }
@@ -285,16 +296,14 @@
                 members.forEach(m => batch.delete(fb.db.collection('valley_members').doc(m.id)));
                 await batch.commit();
                 
-                // Apaga a mensagem do Discord também ou manda aviso de reset
                 if (autoDiscord && CONFIG.webhookUrl) {
                      await fetch(CONFIG.webhookUrl, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ content: "⚠️ **O Ranking foi resetado pelo Admin!** Uma nova temporada começa agora." })
                     });
-                    localStorage.removeItem('valley_last_msg_id'); // Reseta ID para criar nova msg na proxima
+                    localStorage.removeItem('valley_last_msg_id'); 
                 }
-                
                 setLoading(false);
                 alert("Ranking zerado.");
             };
@@ -383,6 +392,7 @@
                                             <th className="p-4">Membro</th>
                                             <th className="p-4 hidden md:table-cell">ID Game</th>
                                             <th className="p-4 text-right">Farm Total</th>
+                                            {isAdmin && <th className="p-4 text-center w-24">Ações</th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
@@ -392,9 +402,15 @@
                                                 <td className="p-4 font-bold text-gray-200 group-hover:text-pink-400 transition-colors">{m.name}</td>
                                                 <td className="p-4 hidden md:table-cell font-mono text-xs text-gray-500">{m.id_game}</td>
                                                 <td className="p-4 text-right font-black text-white text-base">{formatNumber(m.amount)}</td>
+                                                {isAdmin && (
+                                                    <td className="p-4 flex items-center justify-center gap-2">
+                                                        <button onClick={() => openEditModal(m)} className="p-1.5 bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white rounded transition-all" title="Editar Manualmente"><Icons.Edit size={14}/></button>
+                                                        <button onClick={() => handleDeleteMember(m.id, m.name)} className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded transition-all" title="Remover Membro"><Icons.Trash size={14}/></button>
+                                                    </td>
+                                                )}
                                             </tr>
                                         ))}
-                                        {sortedMembers.length === 0 && <tr><td colSpan="4" className="p-12 text-center text-gray-500">Nenhum membro encontrado.</td></tr>}
+                                        {sortedMembers.length === 0 && <tr><td colSpan={isAdmin ? 5 : 4} className="p-12 text-center text-gray-500">Nenhum membro encontrado.</td></tr>}
                                     </tbody>
                                 </table>
                             </div>
@@ -405,7 +421,7 @@
                                 <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                                     <div><h3 className="text-white font-bold text-lg mb-1">Importação de Logs</h3><p className="text-gray-400 text-sm">Cole as mensagens do Discord abaixo.</p></div>
                                     <div className="flex gap-2">
-                                         <button onClick={testWebhook} className="px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-white hover:bg-white/20 transition-all border border-white/10">TESTAR WEBHOOK</button>
+                                        <button onClick={testWebhook} className="px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-white hover:bg-white/20 transition-all border border-white/10">TESTAR WEBHOOK</button>
                                         <button onClick={() => setAutoDiscord(!autoDiscord)} className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bot-toggle ${autoDiscord ? 'bot-active' : 'bg-gray-700 text-gray-400'}`}><Icons.Discord size={14} />{autoDiscord ? 'BOT ATIVADO' : 'BOT DESLIGADO'}</button>
                                     </div>
                                 </div>
@@ -417,6 +433,36 @@
                             </div>
                         )}
                     </main>
+                    
+                    {/* MODAL DE EDIÇÃO MANUAL */}
+                    {editingMember && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 modal-overlay animate-fade-in">
+                            <div className="glass p-6 rounded-xl w-full max-w-md bg-[#0f0f10] shadow-2xl border border-pink-500/20">
+                                <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2">
+                                    <Icons.Edit className="text-pink-500"/> Editar Membro
+                                </h3>
+                                <form onSubmit={saveManualEdit} className="space-y-4">
+                                    <div>
+                                        <label className="text-xs text-gray-400 uppercase font-bold block mb-1">Nome</label>
+                                        <input type="text" value={editingMember.name} onChange={e => setEditingMember({...editingMember, name: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded p-2 text-white text-sm focus:border-pink-500 outline-none" required />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-400 uppercase font-bold block mb-1">ID In-Game</label>
+                                        <input type="text" value={editingMember.id_game} onChange={e => setEditingMember({...editingMember, id_game: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded p-2 text-white text-sm focus:border-pink-500 outline-none" required />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-400 uppercase font-bold block mb-1">Quantidade de Farm</label>
+                                        <input type="number" value={editingMember.amount} onChange={e => setEditingMember({...editingMember, amount: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded p-2 text-white text-sm focus:border-pink-500 outline-none" required />
+                                    </div>
+                                    
+                                    <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
+                                        <button type="button" onClick={() => setEditingMember(null)} className="px-4 py-2 text-xs font-bold text-gray-400 hover:text-white transition-colors">CANCELAR</button>
+                                        <button type="submit" disabled={loading} className="px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white rounded text-xs font-bold transition-all shadow-lg shadow-pink-600/20">{loading ? 'SALVANDO...' : 'SALVAR ALTERAÇÕES'}</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
