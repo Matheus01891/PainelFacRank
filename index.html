@@ -72,15 +72,23 @@
             Upload: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>,
             Search: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
             Edit: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
+            History: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>,
             Discord: ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037 14.168 14.168 0 0 0-.64 1.307 18.277 18.277 0 0 0-5.428 0 14.28 14.28 0 0 0-.644-1.309.071.071 0 0 0-.077-.036 19.736 19.736 0 0 0-4.89 1.515.06.06 0 0 0-.027.027C1.487 9.525.79 14.544 1.706 19.508a.077.077 0 0 0 .03.057 19.9 19.9 0 0 0 6.014 3.018.076.076 0 0 0 .083-.026 14.17 14.17 0 0 0 1.258-2.036.077.077 0 0 0-.041-.107 13.048 13.048 0 0 1-1.898-.905.078.078 0 0 1-.005-.129c.126-.094.25-.192.37-.294a.075.075 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.067 0a.074.074 0 0 1 .08.01c.118.1.242.198.368.293a.077.077 0 0 1-.005.13 12.592 12.592 0 0 1-1.898.904.076.076 0 0 0-.04.107 14.284 14.284 0 0 0 1.256 2.035.076.076 0 0 0 .084.027 19.866 19.866 0 0 0 6.02-3.02.077.077 0 0 0 .03-.056c.806-4.38.16-9.224-1.95-14.293a.06.06 0 0 0-.028-.027zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.418 2.157-2.418 1.21 0 2.176 1.095 2.157 2.418 0 1.334-.956 2.42-2.157 2.42zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.095 2.157 2.418 0 1.334-.946 2.42-2.157 2.42z"/></svg>
         };
 
         const formatNumber = (num) => num ? num.toLocaleString('pt-BR') : '0';
+        
+        const formatDate = (timestamp) => {
+            if (!timestamp) return '...';
+            const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        };
 
         // --- APP PRINCIPAL ---
         const App = () => {
             const [isAdmin, setIsAdmin] = useState(false);
             const [members, setMembers] = useState([]);
+            const [history, setHistory] = useState([]);
             const [status, setStatus] = useState('Conectando...');
             const [fb, setFb] = useState(null);
             const [rawLog, setRawLog] = useState("");
@@ -88,9 +96,7 @@
             const [searchTerm, setSearchTerm] = useState("");
             const [activeTab, setActiveTab] = useState('ranking');
             const [autoDiscord, setAutoDiscord] = useState(true);
-            
-            // Estado para Edição Manual
-            const [editingMember, setEditingMember] = useState(null); // Objeto do membro sendo editado
+            const [editingMember, setEditingMember] = useState(null);
 
             // Inicialização
             useEffect(() => {
@@ -104,6 +110,7 @@
                         
                         setFb({ db, auth, batch: () => db.batch(), increment: (n) => firebase.firestore.FieldValue.increment(n), serverTimestamp: () => firebase.firestore.FieldValue.serverTimestamp() });
                         
+                        // Listener de Membros
                         db.collection('valley_members').onSnapshot(snap => {
                             setMembers(snap.docs.map(d => ({id: d.id, ...d.data()})));
                             setStatus('Online');
@@ -111,12 +118,38 @@
                             console.error(err);
                             setStatus('Erro Permissão');
                         });
-                    } catch (e) {
-                        setStatus('Erro Conexão');
-                    }
+                        
+                    } catch (e) { setStatus('Erro Conexão'); }
                 };
                 init();
             }, []);
+
+            // Listener de Histórico (Só ativa se estiver na aba histórico para economizar)
+            useEffect(() => {
+                if (!fb || activeTab !== 'history') return;
+                
+                const unsub = fb.db.collection('valley_history')
+                    .orderBy('timestamp', 'desc')
+                    .limit(50) // Pega os últimos 50 eventos
+                    .onSnapshot(snap => {
+                        setHistory(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                    });
+                    
+                return () => unsub();
+            }, [fb, activeTab]);
+
+            // Função Auxiliar de Log
+            const addToHistory = async (type, details) => {
+                if (!fb) return;
+                try {
+                    await fb.db.collection('valley_history').add({
+                        type: type,
+                        details: details,
+                        timestamp: fb.serverTimestamp(),
+                        author: isAdmin ? 'Admin' : 'Sistema'
+                    });
+                } catch (e) { console.error("Erro ao salvar histórico", e); }
+            };
 
             const handleLogin = () => {
                 if (isAdmin) { setIsAdmin(false); return; }
@@ -128,347 +161,17 @@
             const testWebhook = async () => {
                 if (!CONFIG.webhookUrl) return alert("ERRO: Link do Webhook inválido!");
                 try {
-                    await fetch(CONFIG.webhookUrl, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ content: "✅ **Teste do Bot Valley!** O sistema está conectado." })
-                    });
+                    await fetch(CONFIG.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: "✅ **Teste do Bot Valley!** O sistema está conectado." }) });
                     alert("Mensagem enviada!");
                 } catch (e) { alert("Erro ao enviar."); }
             };
 
-            // Lógica de envio inteligente para o Discord
-            const sendWebhook = async (updatesCount) => {
+            const sendWebhook = async (actionType) => {
                 if (!CONFIG.webhookUrl || !autoDiscord) return;
                 const topMembers = [...members].sort((a,b) => (b.amount||0) - (a.amount||0)).slice(0, 10);
                 const totalFarm = members.reduce((a,c) => a + (c.amount||0), 0);
                 const date = new Date().toLocaleTimeString('pt-BR');
 
-                let rankingString = "";
-                if (topMembers.length > 0) {
-                    rankingString = topMembers.map((m, i) => {
-                        const medal = i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `#${i+1}`;
-                        return `**${medal}** \`${m.name}\` — **${formatNumber(m.amount)}**`;
-                    }).join('\n');
-                } else {
-                    rankingString = "*Nenhum dado ainda...*";
-                }
-
-                const embed = {
-                    username: "Valley Bot",
-                    avatar_url: "https://i.imgur.com/4M34hi2.png",
-                    embeds: [{
-                        title: "📦 Ranking de Farm - Atualizado",
-                        description: `Painel atualizado (Manual ou Log)!\nConfira o Top 10 atual da facção:`,
-                        color: 15489113, 
-                        fields: [
-                            { name: "🏆 Top Farmadores", value: rankingString, inline: false },
-                            { name: "📊 Estatísticas", value: `Total Farmado: **${formatNumber(totalFarm)}**\nMembros: **${members.length}**`, inline: false }
-                        ],
-                        footer: { text: `Última atualização: ${date} • Valley Dashboard` }
-                    }]
-                };
-
-                // Mesma lógica de PATCH para editar a msg anterior
-                const lastMsgId = localStorage.getItem('valley_last_msg_id');
-                let url = CONFIG.webhookUrl + "?wait=true";
-                let method = "POST";
-                if (lastMsgId) {
-                    url = `${CONFIG.webhookUrl}/messages/${lastMsgId}?wait=true`;
-                    method = "PATCH";
-                }
-                try {
-                    const res = await fetch(url, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(embed) });
-                    if (!res.ok && method === "PATCH") {
-                        // Se falhar a edição, cria nova
-                        const retryRes = await fetch(CONFIG.webhookUrl + "?wait=true", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(embed) });
-                        const data = await retryRes.json();
-                        if (data.id) localStorage.setItem('valley_last_msg_id', data.id);
-                    } else if (res.ok) {
-                        const data = await res.json();
-                        if (data.id) localStorage.setItem('valley_last_msg_id', data.id);
-                    }
-                } catch (e) { console.error("Erro Webhook", e); }
-            };
-
-            // Processamento de Logs
-            const processLogs = async () => {
-                if (!fb || !rawLog.trim()) { alert("A caixa está vazia!"); return; }
-                setLoading(true);
-                try {
-                    const batch = fb.batch();
-                    const lines = rawLog.split('\n');
-                    let count = 0;
-                    const updates = {};
-                    let currentName = null, currentId = null;
-
-                    lines.forEach(line => {
-                        const clean = line.trim();
-                        const idMatch = clean.match(/\[ID\]:\s*(\d+)/i);
-                        const nameMatch = clean.match(/\[NOME\]:\s*([^(\n|P|G)]+)/i);
-                        
-                        if (nameMatch) currentName = nameMatch[1].trim();
-                        if (idMatch) currentId = idMatch[1].trim();
-                        
-                        const itemMatch = clean.match(/x(\d+)\s+(.+)/i);
-                        if (itemMatch && currentName) {
-                            const qty = parseInt(itemMatch[1]);
-                            const docId = currentId || currentName.replace(/\s+/g, '_').toLowerCase();
-                            if (!updates[docId]) updates[docId] = { name: currentName, id_game: currentId || '?', total: 0 };
-                            updates[docId].total += qty;
-                            count++;
-                        }
-                    });
-
-                    if (count === 0) { alert("Nenhum item encontrado."); setLoading(false); return; }
-
-                    Object.keys(updates).forEach(key => {
-                        const ref = fb.db.collection('valley_members').doc(key);
-                        batch.set(ref, {
-                            name: updates[key].name,
-                            id_game: updates[key].id_game,
-                            amount: fb.increment(updates[key].total),
-                            last_update: fb.serverTimestamp()
-                        }, { merge: true });
-                    });
-
-                    await batch.commit();
-                    if (autoDiscord) setTimeout(() => sendWebhook(count), 1000); 
-                    setRawLog("");
-                    alert(`${count} itens salvos! Discord atualizado.`);
-                    setActiveTab('ranking');
-                } catch (e) {
-                    console.error(e);
-                    alert("Erro ao salvar.");
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            // --- AÇÕES DO ADMIN (MANUAL) ---
-
-            // Função para Remover Membro
-            const handleDeleteMember = async (id, name) => {
-                if (!isAdmin) return;
-                if (!confirm(`TEM CERTEZA?\n\nVocê vai remover "${name}" do ranking permanentemente.`)) return;
-                
-                try {
-                    await fb.db.collection('valley_members').doc(id).delete();
-                    alert("Membro removido com sucesso!");
-                } catch (e) {
-                    alert("Erro ao remover: " + e.message);
-                }
-            };
-
-            // Abrir Modal de Edição
-            const openEditModal = (member) => {
-                setEditingMember({ ...member }); // Clona para editar sem afetar a lista na hora
-            };
-
-            // Salvar Edição Manual
-            const saveManualEdit = async (e) => {
-                e.preventDefault();
-                if (!editingMember) return;
-                
-                setLoading(true);
-                try {
-                    await fb.db.collection('valley_members').doc(editingMember.id).update({
-                        name: editingMember.name,
-                        id_game: editingMember.id_game,
-                        amount: parseInt(editingMember.amount) // Garante que é numero
-                    });
-                    
-                    if (autoDiscord) setTimeout(() => sendWebhook(0), 1000); // Atualiza bot
-                    
-                    setEditingMember(null); // Fecha modal
-                    alert("Dados atualizados!");
-                } catch (err) {
-                    alert("Erro ao atualizar: " + err.message);
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const resetAll = async () => {
-                if (!confirm("Isso apaga TUDO. Confirmar?")) return;
-                setLoading(true);
-                const batch = fb.batch();
-                members.forEach(m => batch.delete(fb.db.collection('valley_members').doc(m.id)));
-                await batch.commit();
-                
-                if (autoDiscord && CONFIG.webhookUrl) {
-                     await fetch(CONFIG.webhookUrl, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ content: "⚠️ **O Ranking foi resetado pelo Admin!** Uma nova temporada começa agora." })
-                    });
-                    localStorage.removeItem('valley_last_msg_id'); 
-                }
-                setLoading(false);
-                alert("Ranking zerado.");
-            };
-
-            const copyReport = () => {
-                const sorted = [...members].sort((a,b) => (b.amount||0) - (a.amount||0));
-                const date = new Date().toLocaleDateString('pt-BR');
-                let t = `\`\`\`ini\n[ RELATÓRIO DE FARM - ${date} ]\n\nPOS  NOME                FARM\n---  ------------------  ------\n`;
-                sorted.forEach((m, i) => {
-                    t += `#${(i+1).toString().padStart(2, '0')}  ${m.name.substring(0,18).padEnd(18, ' ')}  ${(m.amount||0).toString().padStart(6, ' ')}\n`;
-                });
-                t += `\n[TOTAL]: ${sorted.reduce((a,c)=>a+(c.amount||0),0)} itens\n\`\`\``;
-                navigator.clipboard.writeText(t);
-                alert("Copiado!");
-            };
-
-            const sortedMembers = useMemo(() => {
-                return members
-                    .filter(m => m.name.toLowerCase().includes(searchTerm.toLowerCase()) || m.id_game.includes(searchTerm))
-                    .sort((a,b) => (b.amount||0) - (a.amount||0));
-            }, [members, searchTerm]);
-
-            return (
-                <div className="min-h-screen bg-[#050505] text-gray-200 pb-12">
-                    <nav className="glass-header h-16 sticky top-0 z-50 px-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-pink-600/20 p-2 rounded-lg border border-pink-500/30">
-                                <Icons.Sword className="text-pink-500" />
-                            </div>
-                            <div>
-                                <h1 className="font-bold text-white tracking-wide text-sm md:text-base">VALLEY DASHBOARD</h1>
-                                <div className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-wider opacity-70">
-                                    <span className={`w-1.5 h-1.5 rounded-full ${status==='Online'?'bg-green-500':'bg-red-500'}`}></span>
-                                    {status}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <button onClick={handleLogin} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${isAdmin ? 'bg-pink-600/20 border-pink-500/50 text-pink-400 hover:bg-pink-600/30' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}>
-                                {isAdmin ? <Icons.Unlock size={14}/> : <Icons.Lock size={14}/>}
-                                {isAdmin ? 'ADMIN' : 'VISITANTE'}
-                            </button>
-                        </div>
-                    </nav>
-
-                    <main className="max-w-5xl mx-auto p-4 md:p-6 space-y-6">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="glass p-5 rounded-xl col-span-2 md:col-span-2 relative overflow-hidden group">
-                                <div className="absolute -right-4 -top-4 text-pink-600/10 group-hover:text-pink-600/20 transition-all"><Icons.Shield size={100}/></div>
-                                <h3 className="text-gray-400 text-xs font-bold uppercase mb-1">Total da Facção</h3>
-                                <p className="text-3xl md:text-4xl font-black text-white">{formatNumber(members.reduce((a,c)=>a+(c.amount||0),0))}</p>
-                            </div>
-                            <div className="glass p-5 rounded-xl col-span-2 md:col-span-1">
-                                <h3 className="text-gray-400 text-xs font-bold uppercase mb-1">Membros</h3>
-                                <p className="text-2xl font-black text-white">{members.length}</p>
-                            </div>
-                            <div className="glass p-4 rounded-xl col-span-2 md:col-span-1 flex flex-col justify-center gap-2">
-                                {isAdmin ? (
-                                    <>
-                                        <button onClick={copyReport} className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-1.5 rounded text-xs flex items-center justify-center gap-2 transition-colors"><Icons.Copy size={14}/> COPIAR RELATÓRIO</button>
-                                        <button onClick={resetAll} className="w-full bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 font-bold py-1.5 rounded text-xs flex items-center justify-center gap-2 transition-colors"><Icons.Trash size={14}/> ZERAR TUDO</button>
-                                    </>
-                                ) : (
-                                    <div className="text-center text-xs text-gray-500 py-2"><Icons.Lock className="mx-auto mb-1 opacity-50"/> Ações restritas</div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-white/5 pb-2">
-                            <div className="flex gap-4 w-full md:w-auto">
-                                <button onClick={() => setActiveTab('ranking')} className={`pb-2 text-sm font-bold uppercase transition-colors border-b-2 ${activeTab==='ranking' ? 'border-pink-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>Ranking</button>
-                                {isAdmin && <button onClick={() => setActiveTab('import')} className={`pb-2 text-sm font-bold uppercase transition-colors border-b-2 ${activeTab==='import' ? 'border-pink-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>Importar Logs</button>}
-                            </div>
-                            <div className="relative w-full md:w-64">
-                                <Icons.Search className="absolute left-3 top-2.5 text-gray-500" size={16} />
-                                <input type="text" placeholder="Buscar membro..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-pink-500/50 transition-colors" />
-                            </div>
-                        </div>
-
-                        {activeTab === 'ranking' && (
-                            <div className="glass rounded-xl overflow-hidden min-h-[400px]">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-white/5 text-gray-400 text-xs font-bold uppercase">
-                                        <tr>
-                                            <th className="p-4 w-16 text-center">#</th>
-                                            <th className="p-4">Membro</th>
-                                            <th className="p-4 hidden md:table-cell">ID Game</th>
-                                            <th className="p-4 text-right">Farm Total</th>
-                                            {isAdmin && <th className="p-4 text-center w-24">Ações</th>}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-white/5">
-                                        {sortedMembers.map((m, i) => (
-                                            <tr key={m.id} className="hover:bg-white/5 transition-colors group">
-                                                <td className="p-4 text-center font-mono text-gray-500 group-hover:text-white">{i < 3 ? <span className={`inline-block w-6 h-6 rounded bg-gradient-to-br text-white leading-6 shadow-lg ${i===0?'from-yellow-400 to-yellow-600':i===1?'from-gray-300 to-gray-500':'from-orange-400 to-orange-700'}`}>{i+1}</span> : i+1}</td>
-                                                <td className="p-4 font-bold text-gray-200 group-hover:text-pink-400 transition-colors">{m.name}</td>
-                                                <td className="p-4 hidden md:table-cell font-mono text-xs text-gray-500">{m.id_game}</td>
-                                                <td className="p-4 text-right font-black text-white text-base">{formatNumber(m.amount)}</td>
-                                                {isAdmin && (
-                                                    <td className="p-4 flex items-center justify-center gap-2">
-                                                        <button onClick={() => openEditModal(m)} className="p-1.5 bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white rounded transition-all" title="Editar Manualmente"><Icons.Edit size={14}/></button>
-                                                        <button onClick={() => handleDeleteMember(m.id, m.name)} className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded transition-all" title="Remover Membro"><Icons.Trash size={14}/></button>
-                                                    </td>
-                                                )}
-                                            </tr>
-                                        ))}
-                                        {sortedMembers.length === 0 && <tr><td colSpan={isAdmin ? 5 : 4} className="p-12 text-center text-gray-500">Nenhum membro encontrado.</td></tr>}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-
-                        {activeTab === 'import' && isAdmin && (
-                            <div className="glass p-6 rounded-xl animate-fade-in">
-                                <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                    <div><h3 className="text-white font-bold text-lg mb-1">Importação de Logs</h3><p className="text-gray-400 text-sm">Cole as mensagens do Discord abaixo.</p></div>
-                                    <div className="flex gap-2">
-                                        <button onClick={testWebhook} className="px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-white hover:bg-white/20 transition-all border border-white/10">TESTAR WEBHOOK</button>
-                                        <button onClick={() => setAutoDiscord(!autoDiscord)} className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bot-toggle ${autoDiscord ? 'bot-active' : 'bg-gray-700 text-gray-400'}`}><Icons.Discord size={14} />{autoDiscord ? 'BOT ATIVADO' : 'BOT DESLIGADO'}</button>
-                                    </div>
-                                </div>
-                                <textarea value={rawLog} onChange={e => setRawLog(e.target.value)} placeholder="Cole os logs aqui..." className="w-full h-64 bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white font-mono focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none resize-none mb-4"></textarea>
-                                <div className="flex justify-end gap-3">
-                                    <button onClick={() => setRawLog("")} className="px-5 py-2 text-xs font-bold text-gray-400 hover:text-white">LIMPAR</button>
-                                    <button onClick={processLogs} disabled={loading} className="bg-pink-600 hover:bg-pink-500 text-white px-6 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-lg shadow-pink-600/20 transition-all disabled:opacity-50">{loading ? <Icons.Upload className="animate-spin"/> : <Icons.Upload size={16}/>}{loading ? 'PROCESSANDO...' : 'PROCESSAR E ENVIAR'}</button>
-                                </div>
-                            </div>
-                        )}
-                    </main>
-                    
-                    {/* MODAL DE EDIÇÃO MANUAL */}
-                    {editingMember && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 modal-overlay animate-fade-in">
-                            <div className="glass p-6 rounded-xl w-full max-w-md bg-[#0f0f10] shadow-2xl border border-pink-500/20">
-                                <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2">
-                                    <Icons.Edit className="text-pink-500"/> Editar Membro
-                                </h3>
-                                <form onSubmit={saveManualEdit} className="space-y-4">
-                                    <div>
-                                        <label className="text-xs text-gray-400 uppercase font-bold block mb-1">Nome</label>
-                                        <input type="text" value={editingMember.name} onChange={e => setEditingMember({...editingMember, name: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded p-2 text-white text-sm focus:border-pink-500 outline-none" required />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-gray-400 uppercase font-bold block mb-1">ID In-Game</label>
-                                        <input type="text" value={editingMember.id_game} onChange={e => setEditingMember({...editingMember, id_game: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded p-2 text-white text-sm focus:border-pink-500 outline-none" required />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-gray-400 uppercase font-bold block mb-1">Quantidade de Farm</label>
-                                        <input type="number" value={editingMember.amount} onChange={e => setEditingMember({...editingMember, amount: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded p-2 text-white text-sm focus:border-pink-500 outline-none" required />
-                                    </div>
-                                    
-                                    <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
-                                        <button type="button" onClick={() => setEditingMember(null)} className="px-4 py-2 text-xs font-bold text-gray-400 hover:text-white transition-colors">CANCELAR</button>
-                                        <button type="submit" disabled={loading} className="px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white rounded text-xs font-bold transition-all shadow-lg shadow-pink-600/20">{loading ? 'SALVANDO...' : 'SALVAR ALTERAÇÕES'}</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
-        };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+                let rankingString = topMembers.length > 0 ? topMembers.map((m, i) => {
+                    const medal = i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `#${i+1}`;
+                    return `**${medal}** \`${m.name}\` — **${
