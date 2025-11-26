@@ -44,6 +44,12 @@
 <body>
     <div id="root"></div>
 
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            alert("ERRO NO SITE:\n" + message + "\nLinha: " + lineno);
+        };
+    </script>
+
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
@@ -79,9 +85,11 @@
         const formatNumber = (num) => num ? num.toLocaleString('pt-BR') : '0';
         
         const formatDate = (timestamp) => {
-            if (!timestamp) return '...';
-            const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-            return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            try {
+                if (!timestamp) return '...';
+                const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+                return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            } catch(e) { return 'Data inválida'; }
         };
 
         // --- APP PRINCIPAL ---
@@ -174,4 +182,303 @@
 
                 let rankingString = topMembers.length > 0 ? topMembers.map((m, i) => {
                     const medal = i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `#${i+1}`;
-                    return `**${medal}** \`${m.name}\` — **${
+                    return `**${medal}** \`${m.name}\` — **${formatNumber(m.amount)}**`;
+                }).join('\n') : "*Nenhum dado ainda...*";
+
+                const embed = {
+                    username: "Valley Bot",
+                    avatar_url: "https://i.imgur.com/4M34hi2.png",
+                    embeds: [{
+                        title: "📦 Ranking de Farm - Atualizado",
+                        description: `Uma atualização ocorreu no painel: **${actionType}**\nConfira o Top 10 atual:`,
+                        color: 15489113, 
+                        fields: [
+                            { name: "🏆 Top Farmadores", value: rankingString, inline: false },
+                            { name: "📊 Estatísticas", value: `Total Farmado: **${formatNumber(totalFarm)}**\nMembros: **${members.length}**`, inline: false }
+                        ],
+                        footer: { text: `Última atualização: ${date} • Valley Dashboard` }
+                    }]
+                };
+
+                // Lógica de PATCH (editar mensagem anterior)
+                const lastMsgId = localStorage.getItem('valley_last_msg_id');
+                let url = CONFIG.webhookUrl + "?wait=true";
+                let method = lastMsgId ? "PATCH" : "POST";
+                if (lastMsgId) url = `${CONFIG.webhookUrl}/messages/${lastMsgId}?wait=true`;
+
+                try {
+                    const res = await fetch(url, { method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(embed) });
+                    if (!res.ok && method === "PATCH") {
+                        const retryRes = await fetch(CONFIG.webhookUrl + "?wait=true", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(embed) });
+                        const data = await retryRes.json();
+                        if (data.id) localStorage.setItem('valley_last_msg_id', data.id);
+                    } else if (res.ok) {
+                        const data = await res.json();
+                        if (data.id) localStorage.setItem('valley_last_msg_id', data.id);
+                    }
+                } catch (e) { console.error("Erro Webhook", e); }
+            };
+
+            const processLogs = async () => {
+                if (!fb || !rawLog.trim()) { alert("A caixa está vazia!"); return; }
+                setLoading(true);
+                try {
+                    const batch = fb.batch();
+                    const lines = rawLog.split('\n');
+                    let count = 0;
+                    const updates = {};
+                    let currentName = null, currentId = null;
+
+                    lines.forEach(line => {
+                        const clean = line.trim();
+                        const idMatch = clean.match(/\[ID\]:\s*(\d+)/i);
+                        const nameMatch = clean.match(/\[NOME\]:\s*([^(\n|P|G)]+)/i);
+                        if (nameMatch) currentName = nameMatch[1].trim();
+                        if (idMatch) currentId = idMatch[1].trim();
+                        const itemMatch = clean.match(/x(\d+)\s+(.+)/i);
+                        if (itemMatch && currentName) {
+                            const qty = parseInt(itemMatch[1]);
+                            const docId = currentId || currentName.replace(/\s+/g, '_').toLowerCase();
+                            if (!updates[docId]) updates[docId] = { name: currentName, id_game: currentId || '?', total: 0 };
+                            updates[docId].total += qty;
+                            count++;
+                        }
+                    });
+
+                    if (count === 0) { alert("Nenhum item encontrado."); setLoading(false); return; }
+
+                    Object.keys(updates).forEach(key => {
+                        const ref = fb.db.collection('valley_members').doc(key);
+                        batch.set(ref, { name: updates[key].name, id_game: updates[key].id_game, amount: fb.increment(updates[key].total), last_update: fb.serverTimestamp() }, { merge: true });
+                    });
+
+                    await batch.commit();
+                    
+                    // Salvar no Histórico
+                    await addToHistory('Importação', `Importou ${count} itens via Log.`);
+                    
+                    if (autoDiscord) setTimeout(() => sendWebhook(`Importação de ${count} itens`), 1000); 
+                    setRawLog("");
+                    alert(`${count} itens salvos!`);
+                    setActiveTab('ranking');
+                } catch (e) { console.error(e); alert("Erro ao salvar."); } finally { setLoading(false); }
+            };
+
+            const handleDeleteMember = async (id, name) => {
+                if (!isAdmin) return;
+                if (!confirm(`Remover "${name}" permanentemente?`)) return;
+                try {
+                    await fb.db.collection('valley_members').doc(id).delete();
+                    await addToHistory('Remoção', `Removeu o membro ${name}.`);
+                    alert("Membro removido!");
+                } catch (e) { alert("Erro: " + e.message); }
+            };
+
+            const saveManualEdit = async (e) => {
+                e.preventDefault();
+                if (!editingMember) return;
+                setLoading(true);
+                try {
+                    await fb.db.collection('valley_members').doc(editingMember.id).update({
+                        name: editingMember.name,
+                        id_game: editingMember.id_game,
+                        amount: parseInt(editingMember.amount)
+                    });
+                    
+                    await addToHistory('Edição Manual', `Editou ${editingMember.name} para ${editingMember.amount} itens.`);
+                    if (autoDiscord) setTimeout(() => sendWebhook(`Edição Manual: ${editingMember.name}`), 1000);
+                    
+                    setEditingMember(null);
+                    alert("Dados atualizados!");
+                } catch (err) { alert("Erro: " + err.message); } finally { setLoading(false); }
+            };
+
+            const resetAll = async () => {
+                if (!confirm("Isso apaga TUDO e cria um log de Reset. Confirmar?")) return;
+                setLoading(true);
+                const batch = fb.batch();
+                members.forEach(m => batch.delete(fb.db.collection('valley_members').doc(m.id)));
+                await batch.commit();
+                
+                await addToHistory('RESET TOTAL', 'O Admin resetou todo o ranking.');
+                
+                if (autoDiscord && CONFIG.webhookUrl) {
+                     await fetch(CONFIG.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: "⚠️ **O Ranking foi resetado pelo Admin!** Uma nova temporada começa agora." }) });
+                    localStorage.removeItem('valley_last_msg_id'); 
+                }
+                setLoading(false);
+                alert("Ranking zerado.");
+            };
+
+            const sortedMembers = useMemo(() => {
+                return members
+                    .filter(m => m.name.toLowerCase().includes(searchTerm.toLowerCase()) || m.id_game.includes(searchTerm))
+                    .sort((a,b) => (b.amount||0) - (a.amount||0));
+            }, [members, searchTerm]);
+
+            return (
+                <div className="min-h-screen bg-[#050505] text-gray-200 pb-12">
+                    <nav className="glass-header h-16 sticky top-0 z-50 px-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-pink-600/20 p-2 rounded-lg border border-pink-500/30">
+                                <Icons.Sword className="text-pink-500" />
+                            </div>
+                            <div>
+                                <h1 className="font-bold text-white tracking-wide text-sm md:text-base">VALLEY DASHBOARD</h1>
+                                <div className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-wider opacity-70">
+                                    <span className={`w-1.5 h-1.5 rounded-full ${status==='Online'?'bg-green-500':'bg-red-500'}`}></span>
+                                    {status}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button onClick={handleLogin} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${isAdmin ? 'bg-pink-600/20 border-pink-500/50 text-pink-400 hover:bg-pink-600/30' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}>
+                                {isAdmin ? <Icons.Unlock size={14}/> : <Icons.Lock size={14}/>}
+                                {isAdmin ? 'ADMIN' : 'VISITANTE'}
+                            </button>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-5xl mx-auto p-4 md:p-6 space-y-6">
+                        {/* Status Cards */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="glass p-5 rounded-xl col-span-2 md:col-span-2 relative overflow-hidden group">
+                                <div className="absolute -right-4 -top-4 text-pink-600/10 group-hover:text-pink-600/20 transition-all"><Icons.Shield size={100}/></div>
+                                <h3 className="text-gray-400 text-xs font-bold uppercase mb-1">Total da Facção</h3>
+                                <p className="text-3xl md:text-4xl font-black text-white">{formatNumber(members.reduce((a,c)=>a+(c.amount||0),0))}</p>
+                            </div>
+                            <div className="glass p-5 rounded-xl col-span-2 md:col-span-1">
+                                <h3 className="text-gray-400 text-xs font-bold uppercase mb-1">Membros</h3>
+                                <p className="text-2xl font-black text-white">{members.length}</p>
+                            </div>
+                            <div className="glass p-4 rounded-xl col-span-2 md:col-span-1 flex flex-col justify-center gap-2">
+                                {isAdmin ? (
+                                    <>
+                                        <button onClick={resetAll} className="w-full bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 font-bold py-1.5 rounded text-xs flex items-center justify-center gap-2 transition-colors"><Icons.Trash size={14}/> ZERAR TUDO</button>
+                                    </>
+                                ) : <div className="text-center text-xs text-gray-500 py-2">Ações Restritas</div>}
+                            </div>
+                        </div>
+
+                        {/* Menu Tabs */}
+                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-white/5 pb-2">
+                            <div className="flex gap-4 w-full md:w-auto overflow-x-auto">
+                                <button onClick={() => setActiveTab('ranking')} className={`pb-2 text-sm font-bold uppercase transition-colors whitespace-nowrap border-b-2 ${activeTab==='ranking' ? 'border-pink-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>Ranking</button>
+                                <button onClick={() => setActiveTab('history')} className={`pb-2 text-sm font-bold uppercase transition-colors whitespace-nowrap border-b-2 ${activeTab==='history' ? 'border-pink-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>Histórico</button>
+                                {isAdmin && <button onClick={() => setActiveTab('import')} className={`pb-2 text-sm font-bold uppercase transition-colors whitespace-nowrap border-b-2 ${activeTab==='import' ? 'border-pink-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>Importar Logs</button>}
+                            </div>
+                            
+                            {activeTab === 'ranking' && (
+                                <div className="relative w-full md:w-64">
+                                    <Icons.Search className="absolute left-3 top-2.5 text-gray-500" size={16} />
+                                    <input type="text" placeholder="Buscar membro..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-pink-500/50 transition-colors" />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* TAB: RANKING */}
+                        {activeTab === 'ranking' && (
+                            <div className="glass rounded-xl overflow-hidden min-h-[400px]">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-white/5 text-gray-400 text-xs font-bold uppercase">
+                                        <tr>
+                                            <th className="p-4 w-16 text-center">#</th>
+                                            <th className="p-4">Membro</th>
+                                            <th className="p-4 hidden md:table-cell">ID Game</th>
+                                            <th className="p-4 text-right">Farm Total</th>
+                                            {isAdmin && <th className="p-4 text-center w-24">Ações</th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {sortedMembers.map((m, i) => (
+                                            <tr key={m.id} className="hover:bg-white/5 transition-colors group">
+                                                <td className="p-4 text-center font-mono text-gray-500 group-hover:text-white">{i < 3 ? <span className={`inline-block w-6 h-6 rounded bg-gradient-to-br text-white leading-6 shadow-lg ${i===0?'from-yellow-400 to-yellow-600':i===1?'from-gray-300 to-gray-500':'from-orange-400 to-orange-700'}`}>{i+1}</span> : i+1}</td>
+                                                <td className="p-4 font-bold text-gray-200 group-hover:text-pink-400 transition-colors">{m.name}</td>
+                                                <td className="p-4 hidden md:table-cell font-mono text-xs text-gray-500">{m.id_game}</td>
+                                                <td className="p-4 text-right font-black text-white text-base">{formatNumber(m.amount)}</td>
+                                                {isAdmin && (
+                                                    <td className="p-4 flex items-center justify-center gap-2">
+                                                        <button onClick={() => setEditingMember({...m})} className="p-1.5 bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white rounded transition-all"><Icons.Edit size={14}/></button>
+                                                        <button onClick={() => handleDeleteMember(m.id, m.name)} className="p-1.5 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded transition-all"><Icons.Trash size={14}/></button>
+                                                    </td>
+                                                )}
+                                            </tr>
+                                        ))}
+                                        {sortedMembers.length === 0 && <tr><td colSpan={isAdmin ? 5 : 4} className="p-12 text-center text-gray-500">Nenhum membro encontrado.</td></tr>}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* TAB: HISTÓRICO */}
+                        {activeTab === 'history' && (
+                            <div className="glass rounded-xl p-4 md:p-6 min-h-[400px]">
+                                <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2"><Icons.History className="text-pink-500"/> Registro de Atividades</h3>
+                                <div className="space-y-3">
+                                    {history.map((h) => (
+                                        <div key={h.id} className="bg-white/5 border border-white/5 rounded-lg p-3 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 hover:bg-white/10 transition-colors">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-2 rounded-full ${h.type==='Importação'?'bg-green-500/20 text-green-400':h.type==='Remoção'?'bg-red-500/20 text-red-400':'bg-blue-500/20 text-blue-400'}`}>
+                                                    {h.type==='Importação'?<Icons.Upload size={14}/>:h.type==='Remoção'?<Icons.Trash size={14}/>:<Icons.Edit size={14}/>}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-200 font-bold">{h.type}</p>
+                                                    <p className="text-xs text-gray-400">{h.details}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs font-mono text-gray-500">{formatDate(h.timestamp)}</p>
+                                                <span className="text-[10px] uppercase font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">{h.author || 'Sistema'}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {history.length === 0 && <p className="text-center text-gray-500 py-10">Nenhum histórico recente.</p>}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: IMPORTAR */}
+                        {activeTab === 'import' && isAdmin && (
+                            <div className="glass p-6 rounded-xl animate-fade-in">
+                                <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                    <div><h3 className="text-white font-bold text-lg mb-1">Importação de Logs</h3><p className="text-gray-400 text-sm">Cole as mensagens do Discord abaixo.</p></div>
+                                    <div className="flex gap-2">
+                                        <button onClick={testWebhook} className="px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-white hover:bg-white/20 transition-all border border-white/10">TESTAR WEBHOOK</button>
+                                        <button onClick={() => setAutoDiscord(!autoDiscord)} className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bot-toggle ${autoDiscord ? 'bot-active' : 'bg-gray-700 text-gray-400'}`}><Icons.Discord size={14} />{autoDiscord ? 'BOT ON' : 'BOT OFF'}</button>
+                                    </div>
+                                </div>
+                                <textarea value={rawLog} onChange={e => setRawLog(e.target.value)} placeholder="Cole os logs aqui..." className="w-full h-64 bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white font-mono focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none resize-none mb-4"></textarea>
+                                <div className="flex justify-end gap-3">
+                                    <button onClick={() => setRawLog("")} className="px-5 py-2 text-xs font-bold text-gray-400 hover:text-white">LIMPAR</button>
+                                    <button onClick={processLogs} disabled={loading} className="bg-pink-600 hover:bg-pink-500 text-white px-6 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-lg shadow-pink-600/20 transition-all disabled:opacity-50">{loading ? <Icons.Upload className="animate-spin"/> : <Icons.Upload size={16}/>}{loading ? 'PROCESSANDO...' : 'PROCESSAR E ENVIAR'}</button>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                    
+                    {/* MODAL EDIT */}
+                    {editingMember && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 modal-overlay animate-fade-in">
+                            <div className="glass p-6 rounded-xl w-full max-w-md bg-[#0f0f10] shadow-2xl border border-pink-500/20">
+                                <h3 className="text-white font-bold text-lg mb-4 flex items-center gap-2"><Icons.Edit className="text-pink-500"/> Editar Membro</h3>
+                                <form onSubmit={saveManualEdit} className="space-y-4">
+                                    <div><label className="text-xs text-gray-400 uppercase font-bold block mb-1">Nome</label><input type="text" value={editingMember.name} onChange={e => setEditingMember({...editingMember, name: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded p-2 text-white text-sm focus:border-pink-500 outline-none" required /></div>
+                                    <div><label className="text-xs text-gray-400 uppercase font-bold block mb-1">ID In-Game</label><input type="text" value={editingMember.id_game} onChange={e => setEditingMember({...editingMember, id_game: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded p-2 text-white text-sm focus:border-pink-500 outline-none" required /></div>
+                                    <div><label className="text-xs text-gray-400 uppercase font-bold block mb-1">Farm Total</label><input type="number" value={editingMember.amount} onChange={e => setEditingMember({...editingMember, amount: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded p-2 text-white text-sm focus:border-pink-500 outline-none" required /></div>
+                                    <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
+                                        <button type="button" onClick={() => setEditingMember(null)} className="px-4 py-2 text-xs font-bold text-gray-400 hover:text-white transition-colors">CANCELAR</button>
+                                        <button type="submit" disabled={loading} className="px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white rounded text-xs font-bold transition-all shadow-lg shadow-pink-600/20">{loading ? 'SALVANDO...' : 'SALVAR'}</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
